@@ -1,0 +1,18 @@
+/* Dashboard Specific Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+    margin-bottom: 30px;
+}
+
+.stat-icon {
+    font-size: 2rem;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Specific Card Colors for borders/icons */
+.card.live-active { border-left: 4px solid var(--success); }
+.card.upcoming { border-left: 4px solid var(--primary); }

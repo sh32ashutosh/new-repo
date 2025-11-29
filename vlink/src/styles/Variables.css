@@ -1,0 +1,15 @@
+:root {
+  /* Dark Theme Palette */
+  --bg-dark: #0d0d0d;      /* Main Background */
+  --bg-card: #1e1e1e;      /* Card Background */
+  --bg-hover: #2b2b2b;     /* Hover State */
+  --text-main: #e0e0e0;    /* Primary Text */
+  --text-muted: #9ca3af;   /* Secondary Text */
+  
+  /* Brand Colors */
+  --primary: #2563eb;      /* Blue */
+  --primary-hover: #1d4ed8;
+  --success: #16a34a;      /* Green */
+  --danger: #dc2626;       /* Red */
+  --warning: #ca8a04;      /* Yellow/Orange */
+}

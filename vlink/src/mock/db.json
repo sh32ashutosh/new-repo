@@ -1,0 +1,28 @@
+{
+  "users": [
+    { "username": "student", "password": "123", "role": "student", "name": "Student User", "class": "10", "roll": "STU001" },
+    { "username": "teacher", "password": "123", "role": "teacher", "name": "Dr. Ratnesh", "designation": "Physics HOD" }
+  ],
+  "dashboard": {
+    "live": 1,
+    "upcoming": 1,
+    "completed": 2,
+    "pending": 1
+  },
+  "classes": [
+    { "id": 1, "title": "Physics - Motion", "teacher": "Dr. Ratnesh", "participants": 25, "status": "live", "code": "PHY101" },
+    { "id": 2, "title": "Math - Algebra", "teacher": "Dr. Kailash", "date": "15/09/2025", "status": "upcoming", "code": "MTH202" },
+    { "id": 3, "title": "Chemistry - Atoms", "teacher": "Dr. Ratnesh", "date": "12/09/2025", "status": "completed", "code": "CHM303" }
+  ],
+  "assignments": [
+    { "id": 1, "title": "Math Basics", "details": "2 questions • 30 mins", "status": "pending" },
+    { "id": 2, "title": "Science Quiz", "details": "10 questions", "status": "completed", "score": 8, "total": 10 }
+  ],
+  "files": [
+    { "id": 1, "name": "Physics_Lecture.pdf", "size": "1.85 MB", "date": "13/05/2025", "type": "pdf", "offline": true },
+    { "id": 2, "name": "Intro_Video.mp4", "size": "50 MB", "date": "12/05/2025", "type": "video", "offline": false }
+  ],
+  "discussions": [
+    { "id": 1, "title": "Doubt about Quadratic Eq", "content": "Can someone explain the formula?", "author": "Student A", "replies": 2 }
+  ]
+}
