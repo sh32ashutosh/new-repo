@@ -26,7 +26,7 @@ export default function Sidebar({ isOpen }) {
   return (
     <div className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-header">
-        <h2 style={{color: 'white', margin: 0}}>Vlink Enhanced</h2>
+        <h2 style={{color: 'white', margin: 0}}>Vlink</h2>
       </div>
       
       <nav className="sidebar-nav">
