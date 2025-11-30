@@ -8,6 +8,8 @@ import { connectSocket } from '../services/socketAdapter';
 import Whiteboard from '../components/classroom/Whiteboard';
 import ToolsPanel from '../components/classroom/ToolsPanel';
 import VideoFeed from '../components/classroom/VideoFeed';
+import P2PVideoSharer from '../components/classroom/P2PVideoSharer';
+import VideoRelay from '../components/classroom/VideoRelay'; 
 
 export default function LiveClassroom() {
   const { user } = useAuth();
@@ -16,7 +18,8 @@ export default function LiveClassroom() {
   // --- STATE ---
   const [lines, setLines] = useState([]);
   const linesRef = useRef([]); // Ref to track lines synchronously
-  const [tool, setTool] = useState('pen');
+  
+  const [tool, setTool] = useState('pen'); 
   
   // Media State
   const [stream, setStream] = useState(null);
@@ -24,14 +27,21 @@ export default function LiveClassroom() {
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
 
+  // P2P Host State
+  const [iAmHost, setIAmHost] = useState(false);
+  
+  // Content Mode: 'p2p' (File Share) or 'relay' (Internet Stream)
+  const [shareMode, setShareMode] = useState('relay'); 
+
   // Layout State
   const canvasWrapperRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   // Refs
   const userVideo = useRef();
-  const socket = useRef();
-  const peerRef = useRef(); // Keep track of peer to replace tracks
+  const socket = useRef(); // Socket instance reference
+  const peerRef = useRef(); 
+  const [mediaError, setMediaError] = useState(null); // Store camera errors
 
   // --- RESPONSIVE CANVAS SIZING ---
   useEffect(() => {
@@ -46,12 +56,17 @@ export default function LiveClassroom() {
     return () => resizeObserver.disconnect();
   }, []);
 
-  // --- MEDIA & CONNECTION SETUP ---
+  // --- WEB RTC & SOCKET SETUP ---
   useEffect(() => {
     let myStream = null; 
     let isMounted = true; 
 
-    // 1. Initial Media Get
+    // SAFETY CHECK: Ensure browser supports mediaDevices
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMediaError("HTTPS Required: Browser blocked camera. Please use 'https://' in URL.");
+        return;
+    }
+
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then((currentStream) => {
         if (!isMounted) {
@@ -59,6 +74,7 @@ export default function LiveClassroom() {
             return;
         }
 
+        setMediaError(null); // Clear errors on success
         myStream = currentStream;
         setStream(currentStream);
         
@@ -66,12 +82,11 @@ export default function LiveClassroom() {
           userVideo.current.srcObject = currentStream;
         }
         
-        // 2. Socket & Peer Setup
         socket.current = connectSocket();
 
         if (isTeacher) {
             const peer = new Peer({ initiator: true, trickle: false, stream: currentStream });
-            peerRef.current = peer;
+            peerRef.current = peer; 
             
             peer.on('signal', (data) => {
                 if (isMounted && socket.current) {
@@ -88,8 +103,8 @@ export default function LiveClassroom() {
             if (socket.current) {
                 socket.current.on('callUser', (data) => {
                      const peer = new Peer({ initiator: false, trickle: false, stream: currentStream });
-                     peerRef.current = peer;
-                     
+                     peerRef.current = peer; 
+
                      peer.on('signal', (data) => {
                         if (isMounted && socket.current) {
                             socket.current.emit('answerCall', { signal: data });
@@ -106,17 +121,16 @@ export default function LiveClassroom() {
         }
       })
       .catch(err => {
-        if (isMounted) console.error("Media Error:", err);
+        if (isMounted) {
+            console.error("Media Error:", err);
+            setMediaError("Camera Access Denied: Check browser permissions.");
+        }
       });
       
       return () => {
         isMounted = false;
-        // Aggressive Cleanup: Stop all tracks
         if (myStream) {
-            myStream.getTracks().forEach(track => {
-                track.stop();
-                track.enabled = false;
-            });
+            myStream.getTracks().forEach(track => track.stop());
         }
         if (socket.current && socket.current.disconnect) {
             socket.current.disconnect();
@@ -128,12 +142,11 @@ export default function LiveClassroom() {
   }, [isTeacher, user.id]);
 
   // --- MEDIA CONTROLS ---
-
   const toggleMic = () => {
     if (stream) {
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled; // Mute only (keep hardware on for mic is standard)
+        audioTrack.enabled = !audioTrack.enabled;
         setIsMicOn(audioTrack.enabled);
       }
     }
@@ -143,8 +156,6 @@ export default function LiveClassroom() {
     if (stream) {
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
-        // Standard Mute: This turns off the stream data, but usually leaves hardware light on.
-        // To fix "Background" issue, we ensure 'enabled' is strictly managed.
         videoTrack.enabled = !videoTrack.enabled;
         setIsCamOn(videoTrack.enabled);
       }
@@ -154,23 +165,15 @@ export default function LiveClassroom() {
   const toggleLowBandwidth = () => {
     const newState = !lowBandwidth;
     setLowBandwidth(newState);
-    
     if (stream) {
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-            // For Bandwidth mode, we disable the track.
             videoTrack.enabled = !newState;
             setIsCamOn(!newState);
-            
-            // NOTE: If you want to strictly turn off the hardware light, 
-            // you would use videoTrack.stop() here. 
-            // However, re-enabling it requires getUserMedia() again which is complex for this prototype.
-            // videoTrack.enabled = false is sufficient for bandwidth savings (0 bits sent).
         }
     }
   };
 
-  // --- WHITEBOARD LOGIC ---
   const handleDrawEnd = (action, data) => {
     if (action === 'start') {
       const newLine = { tool: data.tool, points: [data.x, data.y] };
@@ -187,6 +190,7 @@ export default function LiveClassroom() {
       
       linesRef.current = newLines;
       setLines(newLines);
+      
       sendDrawData({ line: updatedLine });
     }
   };
@@ -198,6 +202,7 @@ export default function LiveClassroom() {
 
   return (
     <div className="card" style={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
         <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
           <h2>Live Classroom</h2>
@@ -214,35 +219,86 @@ export default function LiveClassroom() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px', flex: 1 }}>
-        <div ref={canvasWrapperRef} className="canvas-container" style={{ flex: 3, border: '1px solid #333', borderRadius: '8px', background: '#fff', position: 'relative', overflow: 'hidden' }}>
-           <Whiteboard 
-             width={dimensions.width} 
-             height={dimensions.height}
-             tool={tool}
-             isTeacher={isTeacher}
-             onDrawEnd={handleDrawEnd}
-             lines={lines} 
-           />
+      {/* Error Banner for HTTPS/Permissions */}
+      {mediaError && (
+        <div style={{
+            background: '#7f1d1d', 
+            color: '#fca5a5', 
+            padding: '10px', 
+            marginBottom: '15px', 
+            borderRadius: '6px', 
+            border: '1px solid #ef4444',
+            textAlign: 'center',
+            fontSize: '0.9rem'
+        }}>
+            <strong>📷 Issue: {mediaError}</strong>
+            <br/>
+            <span>If using IP (192.168...), ensure you use <b>https://</b></span>
+        </div>
+      )}
+
+      {/* Main Layout */}
+      <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
+        
+        {/* Whiteboard Area */}
+        <div ref={canvasWrapperRef} className="canvas-container" style={{ flex: 3, border: '1px solid #333', background: '#fff', position: 'relative', overflow: 'hidden' }}>
+           <Whiteboard width={dimensions.width} height={dimensions.height} tool={tool} isTeacher={isTeacher} onDrawEnd={handleDrawEnd} lines={lines} />
         </div>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Sidebar (Video + Tools + Streaming) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
             <VideoFeed 
                 isLowDataMode={lowBandwidth} 
                 userVideoRef={userVideo} 
-                isMicOn={isMicOn}
-                isCamOn={isCamOn}
-                onToggleMic={toggleMic}
-                onToggleCam={toggleCam}
+                isMicOn={isMicOn} 
+                isCamOn={isCamOn} 
+                onToggleMic={toggleMic} 
+                onToggleCam={toggleCam} 
             />
             
+            {/* Toggle Content Mode */}
+            <div style={{display: 'flex', gap: '5px'}}>
+                <button 
+                    style={{flex: 1, padding: '5px', background: shareMode === 'relay' ? '#2563eb' : '#333', border: 'none', color: 'white', borderRadius: '4px', cursor: 'pointer'}}
+                    onClick={() => setShareMode('relay')}
+                >
+                    LAN Stream
+                </button>
+                <button 
+                    style={{flex: 1, padding: '5px', background: shareMode === 'p2p' ? '#2563eb' : '#333', border: 'none', color: 'white', borderRadius: '4px', cursor: 'pointer'}}
+                    onClick={() => setShareMode('p2p')}
+                >
+                    P2P Share
+                </button>
+            </div>
+
+            {/* SWITCH BETWEEN MODES */}
+            {shareMode === 'relay' ? (
+                <VideoRelay 
+                    isTeacher={isTeacher} 
+                    socket={socket.current} // <--- PASSING SOCKET TO VIDEO RELAY
+                />
+            ) : (
+                <P2PVideoSharer 
+                    isHost={isTeacher || iAmHost} 
+                    peerRef={peerRef} 
+                    // NOTE: P2P Sharer uses peerRef, not socket, for direct connection
+                />
+            )}
+
             {isTeacher ? (
                 <ToolsPanel setTool={setTool} clearCanvas={clearCanvas} />
             ) : (
-              <div className="card" style={{padding: '15px', textAlign: 'center'}}>
-                <h4>Student View</h4>
-                <p style={{color: '#888'}}>You are viewing the teacher's whiteboard.</p>
-              </div>
+              // Allow students to host P2P in P2P mode
+              shareMode === 'p2p' && !iAmHost && (
+                 <button 
+                    className="btn" 
+                    style={{fontSize: '0.8rem', padding: '5px', background: '#444', marginTop: '10px'}}
+                    onClick={() => setIAmHost(true)}
+                 >
+                    Become Stream Host
+                 </button>
+              )
             )}
         </div>
       </div>
