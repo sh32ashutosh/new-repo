@@ -3,7 +3,9 @@ from typing import List
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "vLink Backend"
-    API_V1_STR: str = "/api/v1"
+    
+    # FIXED: Renamed from API_V1_STR to API_STR to match the new flattened structure
+    API_STR: str = "/api"
     
     # CORS Configuration
     # In production, set this to your specific frontend domain
