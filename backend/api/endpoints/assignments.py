@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List
 import os
@@ -14,30 +13,42 @@ from backend.db.models import User, Assignment, Submission, SubmissionStatus, Us
 router = APIRouter()
 
 # --- SCHEMAS ---
+class CreateAssignmentSchema(BaseModel):
+    classroom_id: str
+    title: str
+    description: Optional[str] = None
+    total_points: int = 10
+
 class QuizSubmission(BaseModel):
     answers: dict # e.g. {"q1": "3.14"}
 
-class SubmissionResponse(BaseModel):
-    id: str
-    status: str
-    grade: Optional[int]
-    message: str
-
 # --- ROUTES ---
 
-@router.get("/")
-async def get_my_assignments(
+@router.post("/create")
+async def create_assignment(
+    request: CreateAssignmentSchema,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Returns assignments specific to the student's enrolled classes.
+    Teacher creates a new assignment for a class.
     """
-    # Logic similar to dashboard, but focused on the Assignment list view
-    # In a real app, we would join Enrollment -> Classroom -> Assignment
-    # For now, we reuse the robust logic via the dashboard aggregation or build a direct query
-    # This is a placeholder for the specific list view if you expand beyond dashboard
-    return {"message": "Use /api/dashboard for the main list for now, or implement specific pagination here."}
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can create assignments")
+
+    new_assignment = Assignment(
+        classroom_id=request.classroom_id,
+        title=request.title,
+        description=request.description,
+        total_points=request.total_points,
+        updated_at=None # Allow DB default
+    )
+    
+    db.add(new_assignment)
+    await db.commit()
+    await db.refresh(new_assignment)
+    
+    return {"success": True, "id": new_assignment.id, "title": new_assignment.title}
 
 @router.post("/{assignment_id}/submit")
 async def submit_assignment(
@@ -64,8 +75,8 @@ async def submit_assignment(
     if existing.scalars().first():
         return {"success": False, "message": "You have already submitted this assignment."}
 
-    # 3. Auto-Grade Logic (Mocked as 10/10 per your React toast)
-    # In reality, you'd compare quiz_data.answers with a stored answer key
+    # 3. Auto-Grade Logic (Mocked logic matches your React toast "Score: 10/10")
+    # In a real app, you would validate quiz_data.answers against a key
     score = 10 
     
     # 4. Create Submission
@@ -83,19 +94,17 @@ async def submit_assignment(
     return {
         "success": True,
         "id": submission.id,
-        "status": submission.status,
+        "status": submission.status.value,
         "grade": score,
         "message": f"Quiz submitted! Score: {score}/{assignment.total_points or 10}"
     }
 
-# --- TUS.IO / FILE UPLOAD PREP ---
+# --- FILE UPLOAD (Tus.io Placeholder) ---
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """
     Standard upload handler. 
-    If using TUS.io client-side, we need a dedicated TUS server implementation 
-    (handling PATCH/HEAD/OFFSET).
-    This is a fallback for standard multipart uploads.
+    This serves as the endpoint for file submissions if you aren't using a dedicated TUS server yet.
     """
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
