@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-# Import endpoints explicitly to avoid package resolution issues
+# Using explicit imports to prevent package resolution errors
 from backend.api.endpoints import auth
 from backend.api.endpoints import dashboard
 from backend.api.endpoints import classes
@@ -7,6 +7,7 @@ from backend.api.endpoints import assignments
 from backend.api.endpoints import files
 from backend.api.endpoints import discussions
 from backend.api.endpoints import live_classroom
+from backend.api.endpoints import profile
 
 api_router = APIRouter()
 
@@ -37,3 +38,7 @@ api_router.include_router(discussions.router, prefix="/discussions", tags=["disc
 # 7. Live Classroom Status
 # URLs: /api/live/{id}/start, /api/live/{id}/end
 api_router.include_router(live_classroom.router, prefix="/live", tags=["live_classroom"])
+
+# 8. Profile & Preferences
+# URLs: /api/profile, /api/profile/preferences
+api_router.include_router(profile.router, prefix="/profile", tags=["profile"])
