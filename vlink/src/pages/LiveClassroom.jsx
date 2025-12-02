@@ -1,8 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Peer from 'simple-peer';
 import { useAuth } from '../context/AuthContext';
-import { sendDrawData } from '../services/api';
+// Ensure sendDrawData sends to your socket event 'draw'
+import { sendDrawData } from '../services/api'; 
 import { connectSocket } from '../services/socketAdapter';
+import { useParams, useNavigate } from 'react-router-dom';
 
 // Components
 import Whiteboard from '../components/classroom/Whiteboard';
@@ -13,11 +15,13 @@ import VideoRelay from '../components/classroom/VideoRelay';
 
 export default function LiveClassroom() {
   const { user } = useAuth();
+  const { id: classId } = useParams(); // Get classId from URL
+  const navigate = useNavigate();
   const isTeacher = user?.role === 'teacher';
 
   // --- STATE ---
   const [lines, setLines] = useState([]);
-  const linesRef = useRef([]); // Ref to track lines synchronously
+  const linesRef = useRef([]); 
   
   const [tool, setTool] = useState('pen'); 
   
@@ -39,9 +43,43 @@ export default function LiveClassroom() {
 
   // Refs
   const userVideo = useRef();
-  const socket = useRef(); // Socket instance reference
+  const socket = useRef(); 
   const peerRef = useRef(); 
-  const [mediaError, setMediaError] = useState(null); // Store camera errors
+  const [mediaError, setMediaError] = useState(null); 
+
+  // --- API CALLS FOR STATUS ---
+  useEffect(() => {
+    // ⚡ NEW: Start the live session if I am the teacher
+    const startSession = async () => {
+        if (isTeacher && classId) {
+            try {
+                const token = localStorage.getItem('access_token');
+                await fetch(`http://localhost:8000/api/live/${classId}/start`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                console.log("🔴 Live Session Started");
+            } catch (err) {
+                console.error("Failed to start live session", err);
+            }
+        }
+    };
+    startSession();
+
+    // Cleanup: End session on unmount
+    return () => {
+        if (isTeacher && classId) {
+             const token = localStorage.getItem('access_token');
+             // Use beacon/fetch keepalive for reliable exit call
+             fetch(`http://localhost:8000/api/live/${classId}/end`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                keepalive: true
+            }).catch(e => console.log(e));
+        }
+    };
+  }, [isTeacher, classId]);
+
 
   // --- RESPONSIVE CANVAS SIZING ---
   useEffect(() => {
@@ -74,7 +112,7 @@ export default function LiveClassroom() {
             return;
         }
 
-        setMediaError(null); // Clear errors on success
+        setMediaError(null); 
         myStream = currentStream;
         setStream(currentStream);
         
@@ -82,7 +120,8 @@ export default function LiveClassroom() {
           userVideo.current.srcObject = currentStream;
         }
         
-        socket.current = connectSocket();
+        // Pass classId so we join the specific room
+        socket.current = connectSocket(classId); 
 
         if (isTeacher) {
             const peer = new Peer({ initiator: true, trickle: false, stream: currentStream });
@@ -107,7 +146,7 @@ export default function LiveClassroom() {
 
                      peer.on('signal', (data) => {
                         if (isMounted && socket.current) {
-                            socket.current.emit('answerCall', { signal: data });
+                           socket.current.emit('answerCall', { signal: data });
                         }
                      });
                      peer.signal(data.signalData);
@@ -139,7 +178,7 @@ export default function LiveClassroom() {
             peerRef.current.destroy();
         }
       };
-  }, [isTeacher, user.id]);
+  }, [isTeacher, user.id, classId]);
 
   // --- MEDIA CONTROLS ---
   const toggleMic = () => {
@@ -191,7 +230,8 @@ export default function LiveClassroom() {
       linesRef.current = newLines;
       setLines(newLines);
       
-      sendDrawData({ line: updatedLine });
+      // Send draw data with room ID context if needed
+      sendDrawData({ line: updatedLine, room: classId });
     }
   };
 
@@ -215,11 +255,11 @@ export default function LiveClassroom() {
            <button className="btn" style={{backgroundColor: lowBandwidth ? '#ea580c' : '#333'}} onClick={toggleLowBandwidth}>
              {lowBandwidth ? '⚡ Low Data Mode Active' : 'Wifi Mode'}
            </button>
-           <button className="btn btn-danger" onClick={() => window.location.href = '/'}>Leave Class</button>
+           <button className="btn btn-danger" onClick={() => navigate('/')}>Leave Class</button>
         </div>
       </div>
 
-      {/* Error Banner for HTTPS/Permissions */}
+      {/* Error Banner */}
       {mediaError && (
         <div style={{
             background: '#7f1d1d', 
@@ -256,7 +296,6 @@ export default function LiveClassroom() {
                 onToggleCam={toggleCam} 
             />
             
-            {/* Toggle Content Mode */}
             <div style={{display: 'flex', gap: '5px'}}>
                 <button 
                     style={{flex: 1, padding: '5px', background: shareMode === 'relay' ? '#2563eb' : '#333', border: 'none', color: 'white', borderRadius: '4px', cursor: 'pointer'}}
@@ -276,20 +315,18 @@ export default function LiveClassroom() {
             {shareMode === 'relay' ? (
                 <VideoRelay 
                     isTeacher={isTeacher} 
-                    socket={socket.current} // <--- PASSING SOCKET TO VIDEO RELAY
+                    socket={socket.current} 
                 />
             ) : (
                 <P2PVideoSharer 
                     isHost={isTeacher || iAmHost} 
                     peerRef={peerRef} 
-                    // NOTE: P2P Sharer uses peerRef, not socket, for direct connection
                 />
             )}
 
             {isTeacher ? (
                 <ToolsPanel setTool={setTool} clearCanvas={clearCanvas} />
             ) : (
-              // Allow students to host P2P in P2P mode
               shareMode === 'p2p' && !iAmHost && (
                  <button 
                     className="btn" 

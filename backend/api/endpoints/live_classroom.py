@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+# 🔄 FIX: backendv2 -> backend (Prevents "Table already defined" error)
 from backend.core.database import get_db
 from backend.api.deps import get_current_user
-from backend.db.models import User, Classroom, ClassStatus
+from backend.db.models import User, Classroom, ClassStatus, UserRole
 
 router = APIRouter()
 
@@ -33,7 +34,12 @@ async def start_class(
     classroom.status = ClassStatus.LIVE
     await db.commit()
     
-    return {"success": True, "status": "live", "message": "Class is now LIVE"}
+    return {
+        "success": True, 
+        "status": "live", 
+        "url": f"/classroom/{class_id}/live",
+        "message": "Class is now LIVE"
+    }
 
 @router.post("/{class_id}/end")
 async def end_class(
@@ -57,4 +63,8 @@ async def end_class(
     classroom.status = ClassStatus.COMPLETED
     await db.commit()
     
-    return {"success": True, "status": "completed", "message": "Class session ended"}
+    return {
+        "success": True, 
+        "status": "completed", 
+        "message": "Class session ended"
+    }

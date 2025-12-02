@@ -1,5 +1,7 @@
 from fastapi import APIRouter
-# Using explicit imports to prevent package resolution errors
+
+# 🔄 UPDATED IMPORTS: backend -> backend
+# Ensure your folder structure matches this (backend/api/endpoints/...)
 from backend.api.endpoints import auth
 from backend.api.endpoints import dashboard
 from backend.api.endpoints import classes
@@ -11,13 +13,14 @@ from backend.api.endpoints import profile
 
 api_router = APIRouter()
 
-# 1. Auth Routes
-# URL: /api/auth/login
-api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+# 1. Auth Routes (The Hardcoded Login Logic lives here)
+# URL: /api/auth/login/access-token
+# ✅ NEW (Matches Frontend URL: /api/login/access-token)
+api_router.include_router(auth.router, prefix="", tags=["auth"])
 
 # 2. Dashboard Routes
 # URL: /api/dashboard
-api_router.include_router(dashboard.router, tags=["dashboard"])
+api_router.include_router(dashboard.router,prefix="/dashboard", tags=["dashboard"])
 
 # 3. Classroom Management
 # URLs: /api/classes/create, /api/classes/join, /api/classes/{id}

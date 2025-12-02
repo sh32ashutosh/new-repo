@@ -10,6 +10,7 @@ import { FaPlus, FaVideo, FaChalkboardTeacher, FaUserFriends } from 'react-icons
 export default function Classes() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Initialize with empty array
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -21,14 +22,19 @@ export default function Classes() {
   const isTeacher = user?.role === 'teacher';
 
   useEffect(() => {
-    // Fetch initial classes (reusing dashboard data for now)
     getDashboardData()
       .then(data => {
-        setClasses(data.classes);
+        // ⚡ SAFETY CHECK: Ensure data.classes exists
+        if (data && data.classes) {
+            setClasses(data.classes);
+        } else {
+            setClasses([]);
+        }
         setLoading(false);
       })
       .catch(err => {
-        console.error(err);
+        console.error("Failed to load classes:", err);
+        setClasses([]); // Fallback to empty
         setLoading(false);
       });
   }, []);
@@ -37,7 +43,8 @@ export default function Classes() {
     e.preventDefault();
     try {
       const newClass = await createClass(newClassTitle);
-      setClasses([...classes, newClass]);
+      // Optimistically add to list
+      setClasses(prev => [...prev, newClass]);
       setIsModalOpen(false);
       setNewClassTitle('');
       toast.success(`Class "${newClass.title}" Created! Code: ${newClass.code}`);
@@ -52,8 +59,8 @@ export default function Classes() {
       const res = await joinClass(joinCode);
       if (res.success) {
         toast.success('Joined class successfully!');
-        // In a real app, we'd re-fetch the class list here.
-        // For mock, we'll just navigate to it or pretend it's added.
+        // Ideally we'd fetch the class details and add it to the list here,
+        // but navigating to it is a good immediate feedback.
         navigate(`/classroom/${res.classId}`);
       }
     } catch (error) {
@@ -61,7 +68,7 @@ export default function Classes() {
     }
   };
 
-  if (loading) return <div style={{padding: '20px'}}>Loading...</div>;
+  if (loading) return <div style={{padding: '20px'}}>Loading Classes...</div>;
 
   return (
     <div>
@@ -86,40 +93,47 @@ export default function Classes() {
         )}
       </div>
 
-      <div className="dashboard-grid">
-        {classes.map((cls) => (
-          <div key={cls.id} className={`card ${cls.status === 'live' ? 'live-active' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{cls.title}</h3>
-                {cls.status === 'live' && (
-                  <span style={{ background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="live-badge" style={{ width: '6px', height: '6px' }}></span> LIVE
-                  </span>
+      {classes.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#888', marginTop: '50px' }}>
+            <p>You haven't joined any classes yet.</p>
+            {!isTeacher && <p>Ask your teacher for a code!</p>}
+        </div>
+      ) : (
+        <div className="dashboard-grid">
+            {classes.map((cls) => (
+            <div key={cls.id} className={`card ${cls.status === 'live' ? 'live-active' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{cls.title}</h3>
+                    {cls.status === 'live' && (
+                    <span style={{ background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span className="live-badge" style={{ width: '6px', height: '6px' }}></span> LIVE
+                    </span>
+                    )}
+                </div>
+                <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '5px' }}>{cls.teacher}</p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#ccc' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaUserFriends /> {cls.participants || 0} Students</span>
+                {isTeacher && <span style={{ fontFamily: 'monospace', background: '#333', padding: '2px 6px', borderRadius: '4px' }}>Code: {cls.code}</span>}
+                </div>
+
+                <button 
+                className={`btn ${cls.status === 'live' ? 'btn-success' : 'btn-primary'}`} 
+                style={{ width: '100%', marginTop: 'auto' }}
+                onClick={() => navigate(`/classroom/${cls.id}`)}
+                >
+                {cls.status === 'live' ? (
+                    <><FaVideo style={{ marginRight: '8px' }} /> Join Live Class</>
+                ) : (
+                    <><FaChalkboardTeacher style={{ marginRight: '8px' }} /> View Classroom</>
                 )}
-              </div>
-              <p style={{ color: '#888', fontSize: '0.9rem', marginTop: '5px' }}>{cls.teacher}</p>
+                </button>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#ccc' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaUserFriends /> {cls.participants || 0} Students</span>
-              {isTeacher && <span style={{ fontFamily: 'monospace', background: '#333', padding: '2px 6px', borderRadius: '4px' }}>Code: {cls.code}</span>}
-            </div>
-
-            <button 
-              className={`btn ${cls.status === 'live' ? 'btn-success' : 'btn-primary'}`} 
-              style={{ width: '100%', marginTop: 'auto' }}
-              onClick={() => navigate(`/classroom/${cls.id}`)}
-            >
-              {cls.status === 'live' ? (
-                <><FaVideo style={{ marginRight: '8px' }} /> Join Live Class</>
-              ) : (
-                <><FaChalkboardTeacher style={{ marginRight: '8px' }} /> View Classroom</>
-              )}
-            </button>
-          </div>
-        ))}
-      </div>
+            ))}
+        </div>
+      )}
 
       {/* Create Class Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create New Class">

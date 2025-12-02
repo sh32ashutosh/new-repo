@@ -4,13 +4,14 @@ from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from backend.core import security
+# 🔄 UPDATED IMPORTS: backend -> backend
 from backend.core.config import settings
 from backend.core.database import get_db
 from backend.db.models import User
 
-# This matches the router path: /api + /auth/login
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_STR}/auth/login")
+# ⚡ CRITICAL FIX: The token URL must match exactly where your auth.py is mounted.
+# In router.py, we mounted auth at root ("") prefix, so the path is /api/login/access-token
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_STR}/login/access-token")
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
@@ -18,7 +19,7 @@ async def get_current_user(
 ) -> User:
     """
     Decodes the JWT token from the Authorization header.
-    Returns the User object if valid, otherwise raises 401.
+    Returns the User object from the REAL Database (vlink.db).
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -27,15 +28,21 @@ async def get_current_user(
     )
     
     try:
-        # Decode token using our SECRET_KEY and ALGORITHM
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        # 1. Decode Token
+        # We use "HS256" as the default algorithm if not explicitly set in config
+        algorithm = getattr(settings, "ALGORITHM", "HS256")
+        
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[algorithm])
         user_id: str = payload.get("sub")
+        
         if user_id is None:
             raise credentials_exception
+            
     except JWTError:
         raise credentials_exception
     
-    # Check if user exists in DB
+    # 2. Query the Real Database
+    # We look up the user by the ID found in the token
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
     

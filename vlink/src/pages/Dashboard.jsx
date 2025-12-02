@@ -7,31 +7,39 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    getDashboardData().then(setData);
+    // We add a catch here to prevent unhandled promise errors
+    getDashboardData()
+      .then(setData)
+      .catch(err => console.error("API Error:", err));
   }, []);
 
-  if (!data) return <div>Loading...</div>;
+  if (!data) return <div style={{padding: '20px'}}>Loading Dashboard...</div>;
 
-  const liveClass = data.classes.find(c => c.status === 'live');
+  // ⚡ FIX 1: Use Optional Chaining (?.) and default to empty array (|| [])
+  // This prevents the "reading 'find' of undefined" crash
+  const liveClass = data.classes?.find(c => c.status === 'live');
+  
+  // ⚡ FIX 2: Safely access dashboard stats or default to 0
+  const stats = data.dashboard || { live: 0, upcoming: 0, completed: 0, pending: 0 };
 
   return (
     <div>
       {/* Stats Grid */}
       <div className="grid-4">
         <div className="card stat-card">
-          <div><p style={{color:'#888'}}>Live Classes</p><p className="stat-value">{data.dashboard.live}</p></div>
+          <div><p style={{color:'#888'}}>Live Classes</p><p className="stat-value">{stats.live}</p></div>
           <div style={{color: '#16a34a', fontSize: '1.5rem'}}>●</div>
         </div>
         <div className="card stat-card">
-          <div><p style={{color:'#888'}}>Upcoming</p><p className="stat-value">{data.dashboard.upcoming}</p></div>
+          <div><p style={{color:'#888'}}>Upcoming</p><p className="stat-value">{stats.upcoming}</p></div>
           <div style={{color: '#2563eb', fontSize: '1.5rem'}}>⏳</div>
         </div>
         <div className="card stat-card">
-          <div><p style={{color:'#888'}}>Completed</p><p className="stat-value">{data.dashboard.completed}</p></div>
+          <div><p style={{color:'#888'}}>Completed</p><p className="stat-value">{stats.completed}</p></div>
           <div style={{color: '#9333ea', fontSize: '1.5rem'}}>✓</div>
         </div>
         <div className="card stat-card">
-          <div><p style={{color:'#888'}}>Pending</p><p className="stat-value">{data.dashboard.pending}</p></div>
+          <div><p style={{color:'#888'}}>Pending</p><p className="stat-value">{stats.pending}</p></div>
           <div style={{color: '#ea580c', fontSize: '1.5rem'}}>!</div>
         </div>
       </div>

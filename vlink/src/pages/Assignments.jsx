@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getDashboardData } from '../services/api';
 import Modal from '../components/common/Modal';
 import { toast } from 'react-toastify';
 
@@ -8,24 +7,77 @@ export default function Assignments() {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'completed'
   const [isQuizOpen, setIsQuizOpen] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Form State for Quiz
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
 
   useEffect(() => {
-    getDashboardData().then(data => setAssignments(data.assignments));
+    fetchAssignments();
   }, []);
 
+  const fetchAssignments = async () => {
+    try {
+        const token = localStorage.getItem('access_token');
+        const res = await fetch('http://localhost:8000/api/assignments/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setAssignments(data || []);
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  // Safe filtering
   const pending = assignments.filter(a => a.status === 'pending');
   const completed = assignments.filter(a => a.status === 'completed');
 
   const handleTakeQuiz = (assignment) => {
     setCurrentQuiz(assignment);
+    setSelectedAnswer(null); // Reset answer
     setIsQuizOpen(true);
   };
 
-  const submitQuiz = () => {
-    setIsQuizOpen(false);
-    toast.success(`Quiz "${currentQuiz.title}" Submitted! Score: 10/10`);
-    // In real app: call api.submitQuiz() here
+  const submitQuiz = async () => {
+    if (!selectedAnswer) {
+        toast.warning("Please select an answer!");
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('access_token');
+        const res = await fetch(`http://localhost:8000/api/assignments/${currentQuiz.id}/submit`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                answers: { q1: selectedAnswer } 
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            setIsQuizOpen(false);
+            toast.success(data.message || "Quiz Submitted!");
+            // Refresh list to move item to completed tab
+            fetchAssignments();
+        } else {
+            toast.error(data.message || "Submission failed");
+        }
+    } catch (error) {
+        toast.error("Server Error");
+    }
   };
+
+  if (loading) return <div style={{padding:'20px'}}>Loading Assignments...</div>;
 
   return (
     <div>
@@ -41,20 +93,23 @@ export default function Assignments() {
       </div>
 
       <div className="card">
-        {(activeTab === 'pending' ? pending : completed).map(a => (
-          <div key={a.id} style={{ padding: '20px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3>{a.title}</h3>
-              <p style={{ color: '#888' }}>{a.details}</p>
+        {(activeTab === 'pending' ? pending : completed).length === 0 ? (
+             <p style={{ padding: '20px', color: '#666' }}>No {activeTab} assignments found.</p>
+        ) : (
+            (activeTab === 'pending' ? pending : completed).map(a => (
+            <div key={a.id} style={{ padding: '20px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                <h3>{a.title}</h3>
+                <p style={{ color: '#888' }}>{a.details}</p>
+                </div>
+                {activeTab === 'pending' ? (
+                <button className="btn btn-warning" onClick={() => handleTakeQuiz(a)}>Take Quiz</button>
+                ) : (
+                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{a.score}/{a.total}</span>
+                )}
             </div>
-            {activeTab === 'pending' ? (
-              <button className="btn btn-warning" onClick={() => handleTakeQuiz(a)}>Take Quiz</button>
-            ) : (
-              <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{a.score}/{a.total}</span>
-            )}
-          </div>
-        ))}
-        {(activeTab === 'pending' ? pending : completed).length === 0 && <p style={{ padding: '20px', color: '#666' }}>No items found.</p>}
+            ))
+        )}
       </div>
 
       {/* Quiz Modal */}
@@ -62,8 +117,22 @@ export default function Assignments() {
         <div style={{ marginBottom: '20px' }}>
           <p><strong>1. What is the value of Pi?</strong></p>
           <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
-            <label><input type="radio" name="q1" /> 3.14</label>
-            <label><input type="radio" name="q1" /> 2.14</label>
+            <label>
+                <input 
+                    type="radio" 
+                    name="q1" 
+                    value="3.14" 
+                    onChange={(e) => setSelectedAnswer(e.target.value)} 
+                /> 3.14
+            </label>
+            <label>
+                <input 
+                    type="radio" 
+                    name="q1" 
+                    value="2.14" 
+                    onChange={(e) => setSelectedAnswer(e.target.value)} 
+                /> 2.14
+            </label>
           </div>
         </div>
         <button className="btn btn-success" style={{ width: '100%' }} onClick={submitQuiz}>Submit Quiz</button>

@@ -1,13 +1,15 @@
 import socketio
 
-# Initialize the Async Socket.IO Server
-# We use cors_allowed_origins='*' to accept connections from your React PWA
-# The frontend uses 'transports': ['websocket'], which this server accepts by default.
+# Define the allowed origins explicitly for the WebSocket connection
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+]
+
 sio = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins='*', 
-    logger=True,  # Keep logs on to see "Handshake" events in terminal
-    engineio_logger=True,
-    # This ensures we don't block the frontend's immediate websocket upgrade attempt
-    allow_upgrades=True 
+    async_mode="asgi",
+    # ⚡ CRITICAL FIX: Explicitly allow the Vite URL
+    cors_allowed_origins=origins,
+    logger=True,
+    engineio_logger=True
 )
