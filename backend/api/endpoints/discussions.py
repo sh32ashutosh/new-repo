@@ -10,7 +10,7 @@ from datetime import datetime
 # 🔄 FIX: backend -> backend
 from backend.core.database import get_db
 from backend.api.deps import get_current_user
-from backend.db.models import User, DiscussionPost, Classroom
+from backend.db.models import User, Discussion, Classroom
 
 router = APIRouter()
 

@@ -1,76 +1,80 @@
 import sys
 import os
+import asyncio
+import logging
 
-# 1. PATH FIX: Add the parent directory to sys.path
-# This ensures "from backend.core..." works even if you run this file directly from the backend folder.
+# Ensure backend package imports work when running from backend/
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import uvicorn
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-# Imports from your backend package
 from backend.core.config import settings
 from backend.core.database import engine, Base
 from backend.api.router import api_router
 
-# Import Socket Manager
+# Socket manager and event handlers
 from backend.core.socket_manager import sio
+import backend.api.sockets  # registers socket event handlers
 
-# CRITICAL: Import the event handlers so they are registered with the 'sio' instance
-# Make sure backend/api/sockets.py exists and uses @sio.on(...)
-import backend.api.sockets 
+# FFProbe worker (background consumer)
+from backend.core.worker import start_ffprobe_worker
 
-# 2. Initialize FastAPI
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_STR}/openapi.json"
-)
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("backend.main")
 
-# 3. Configure CORS
-# We explicitly define the allowed origins here to ensure Vite (port 5173) works perfectly.
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000"  # Backup for other setups
-]
+# Create FastAPI app
+app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_STR}/openapi.json")
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    
 )
 
-# 4. Mount API Routes
-# This connects Auth, Dashboard, Classes, Assignments, Files, etc.
+# Ensure uploads dir exists and mount for static serving
+UPLOADS_DIR = os.path.join(os.getcwd(), "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
+# Include API router under configured prefix
 app.include_router(api_router, prefix=settings.API_STR)
 
-# 5. Database Startup Event
-# Automatically creates tables in vlink.db on boot if they don't exist
+
+# DB startup: create tables and start background worker
 @app.on_event("startup")
-async def init_db_tables():
+async def startup_event():
+    # Create DB tables if missing
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    print("✅ Database Tables Verified/Created")
+    logger.info("✅ Database Tables Verified/Created")
+
+    # Start ffprobe background worker (runs on the current event loop)
+    try:
+        start_ffprobe_worker()
+        logger.info("✅ FFProbe worker started")
+    except Exception as e:
+        logger.warning("⚠️  Could not start FFProbe worker: %s", e)
+
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "vLink Hybrid Backend (HTTP + WebSockets) is Running"}
+    return {"status": "ok", "message": f"{settings.PROJECT_NAME} (HTTP + WebSockets) is Running"}
 
-# 6. WRAP FASTAPI WITH SOCKET.IO
-# This wrapper intercepts requests to /socket.io/ and handles them via the 'sio' instance.
-# All other requests are passed through to the 'app' (FastAPI).
-app = socketio.ASGIApp(
-    socketio_server=sio, 
-    other_asgi_app=app,
-    socketio_path='socket.io'
-)
 
-# 7. Debug Runner
+# Wrap FastAPI with Socket.IO ASGI app
+# This allows /socket.io requests to be handled by socketio while other requests go to FastAPI
+app = socketio.ASGIApp(socketio_server=sio, other_asgi_app=app, socketio_path="socket.io")
+
+
 if __name__ == "__main__":
-    # Ensure port 8000 is free or change it here
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # When run directly, start Uvicorn with the ASGI app (Socket.IO + FastAPI)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
