@@ -156,16 +156,21 @@ class AudioCache(Base):
 
 class LiveChunk(Base):
     """
-    Stores individual audio chunk metadata persisted from socket.io audio stream.
-    The backend writes chunk binary files under uploads/live_chunks/<classroom_id> and stores a record here.
+    Stores individual audio/video chunk metadata persisted from socket.io stream.
+    The backend writes chunk binary files under uploads/live_audio or uploads/live_video.
     """
     __tablename__ = "live_chunks"
     id = Column(String, primary_key=True, index=True, default=gen_uuid)
     classroom_id = Column(String, ForeignKey("classrooms.id"), nullable=False)
     sender_id = Column(String, ForeignKey("users.id"), nullable=True)
-    seq = Column(Integer, nullable=False, index=True)  # sequence number to preserve order
+    
+    seq = Column(Integer, nullable=False, index=True)  # sequence number
     timestamp_ms = Column(Integer, nullable=True)  # unix ms timestamp from client
-    codec = Column(String, nullable=True)  # e.g., "opus"
+    
+    # "audio" or "video" - Added to support x264 video streaming
+    chunk_type = Column(String, default="audio", nullable=False) 
+    
+    codec = Column(String, nullable=True)  # e.g., "opus", "h264"
     file_path = Column(String, nullable=True)  # stored chunk file path
     file_size = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-# 🔄 FIX: backendv2 -> backend (Prevents "Table already defined" error)
 from backend.core.database import get_db
 from backend.api.deps import get_current_user
-from backend.db.models import User, Classroom, ClassStatus, UserRole
+from backend.db.models import User, Classroom, ClassStatus
+# You will need to ensure this function exists in your worker file
+from backend.core.worker import enqueue_recording_merge 
 
 router = APIRouter()
 
@@ -44,12 +45,12 @@ async def start_class(
 @router.post("/{class_id}/end")
 async def end_class(
     class_id: str,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Switches class status to COMPLETED.
-    Triggered when Teacher clicks 'Leave Class' or ends session.
+    Switches class status to COMPLETED and triggers recording generation.
     """
     result = await db.execute(select(Classroom).where(Classroom.id == class_id))
     classroom = result.scalars().first()
@@ -60,11 +61,16 @@ async def end_class(
     if classroom.teacher_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the teacher can end the class")
 
+    # 1. Update Status
     classroom.status = ClassStatus.COMPLETED
     await db.commit()
+
+    # 2. Trigger FFmpeg Merge Task
+    # This runs in the background so the teacher gets an immediate "Class Ended" response.
+    background_tasks.add_task(enqueue_recording_merge, class_id)
     
     return {
         "success": True, 
         "status": "completed", 
-        "message": "Class session ended"
+        "message": "Class session ended. Recording is being processed."
     }
